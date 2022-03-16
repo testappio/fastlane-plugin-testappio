@@ -1,0 +1,36 @@
+lane :test do
+  # upload both Android (apk) and iOS (ipa)
+  upload_to_testappio(
+    api_token: "",
+    app_id: "",
+    release: "both",
+    apk_file: "./fastlane/sample/sample-app.apk",
+    ipa_file: "./fastlane/sample/sample-app.ipa",
+    release_notes: "Manual release notes for both Android & iOS",
+    git_release_notes: true,
+    git_commit_id: false,
+    notify: false
+  )
+  # upload iOS (ipa) only
+  upload_to_testappio(
+    api_token: "",
+    app_id: "",
+    release: "ios",
+    ipa_file: "./fastlane/sample/sample-app.ipa",
+    release_notes: "Manual release notes for iOS",
+    git_release_notes: true,
+    git_commit_id: false,
+    notify: false
+  )
+  # upload Android (apk) only
+  upload_to_testappio(
+    api_token: "",
+    app_id: "",
+    release: "android",
+    apk_file: "./fastlane/sample/sample-app.apk",
+    release_notes: "Manual release notes for Android",
+    git_release_notes: true,
+    git_commit_id: false,
+    notify: false
+  )
+end
