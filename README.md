@@ -1,12 +1,14 @@
 # [<img src="https://assets.testapp.io/logo/blue.svg" alt="TestApp.io"/>](https://testapp.io/) Fastlane Plugin
 
+
 > This is in BETA mode. Your feedback is highly appreciated.
 
 A fastlane plugin to upload both Android & iOS apps to TestApp.io to notify everyone for testing and feedback.
 
 #### Version 1.0
 
-<!-- [![fastlane Plugin Badge](https://rawcdn.githack.com/fastlane/fastlane/master/fastlane/assets/plugin-badge.svg)](https://rubygems.org/gems/fastlane-plugin-testappio) -->
+[![fastlane Plugin Badge](https://rawcdn.githack.com/fastlane/fastlane/master/fastlane/assets/plugin-badge.svg)](https://rubygems.org/gems/fastlane-plugin-testappio) [![Gem Version](https://badge.fury.io/rb/fastlane-plugin-testappio.svg)](https://badge.fury.io/rb/fastlane-plugin-testappio)
+
 
 - [TestApp.io plugin](#testappio-plugin)
   - [Getting started](#getting-started)
