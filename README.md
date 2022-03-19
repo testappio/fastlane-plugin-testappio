@@ -1,12 +1,10 @@
 # [<img src="https://assets.testapp.io/logo/blue.svg" alt="TestApp.io"/>](https://testapp.io/) Fastlane Plugin
 
-
 > This is in BETA mode. Your feedback is highly appreciated.
 
-A fastlane plugin to upload both Android & iOS apps to TestApp.io to notify everyone for testing and feedback.
+A Fastlane plugin to upload both Android & iOS apps to TestApp.io to notify everyone for testing and feedback.
 
 [![fastlane Plugin Badge](https://rawcdn.githack.com/fastlane/fastlane/master/fastlane/assets/plugin-badge.svg)](https://rubygems.org/gems/fastlane-plugin-testappio) [![Gem Version](https://badge.fury.io/rb/fastlane-plugin-testappio.svg)](https://badge.fury.io/rb/fastlane-plugin-testappio)
-
 
 - [TestApp.io plugin](#testappio-plugin)
   - [Getting started](#getting-started)
@@ -33,6 +31,8 @@ Check out the [example `Fastfile`](fastlane/Fastfile) to see how to use this plu
 
 To upload after the fastlane `gym` action:
 
+##### Both Android & iOS
+
 ```ruby
   lane :development do
     match(type: "development")
@@ -46,7 +46,45 @@ To upload after the fastlane `gym` action:
       release_notes: "release notes go here",
       git_release_notes: true,
       git_commit_id: false,
-      notify: false
+      notify: true
+    )
+  end
+```
+
+##### Android
+
+```ruby
+  lane :development do
+    match(type: "development")
+    gym(export_method: "development")
+    upload_to_testappio(
+      api_token: "Your API Token",
+      app_id: "Your App ID",
+      release: "android",
+      apk_file: "/full/path/to/app.apk",
+      release_notes: "release notes go here",
+      git_release_notes: true,
+      git_commit_id: false,
+      notify: true
+    )
+  end
+```
+
+##### iOS
+
+```ruby
+  lane :development do
+    match(type: "development")
+    gym(export_method: "development")
+    upload_to_testappio(
+      api_token: "Your API Token",
+      app_id: "Your App ID",
+      release: "ios",
+      ipa_file: "/full/path/to/app.ipa",
+      release_notes: "release notes go here",
+      git_release_notes: true,
+      git_commit_id: false,
+      notify: true
     )
   end
 ```
@@ -65,7 +103,7 @@ Upload Android (APK) & iOS (IPA) files to TestApp.io and notify your team member
 | release_notes     | Manually add the release notes to be displayed for the testers                                          | TESTAPPIO_RELEASE_NOTES     |         |
 | git_release_notes | Collect release notes from the latest git commit message to be displayed for the testers: true or false | TESTAPPIO_GIT_RELEASE_NOTES | true    |
 | git_commit_id     | Include the last commit ID in the release notes (works with both release notes option): true or false   | TESTAPPIO_GIT_COMMIT_ID     | false   |
-| notify            | Send notificaitons to your team members about this release: true or false                               | TESTAPPIO_NOTIFY            | false   |
+| notify            | Send notifications to your team members about this release: true or false                               | TESTAPPIO_NOTIFY            | false   |
 
 ## Issues and feedback
 
