@@ -31,23 +31,29 @@ Check out the [example `Fastfile`](fastlane/Fastfile) to see how to use this plu
 
 To upload after the fastlane `gym` action:
 
-##### Both Android & iOS
+
+##### iOS
 
 ```ruby
   lane :development do
-    match(type: "development")
-    gym(export_method: "development")
+  
+    increment_build_number
+    match(type: "adhoc")
+    gym(export_method: "ad-hoc", output_directory: "build", output_name: "app.ipa")
+  
     upload_to_testappio(
-      api_token: "Your API Token",
-      app_id: "Your App ID",
-      release: "both",
-      apk_file: "/full/path/to/app.apk",
-      ipa_file: "/full/path/to/app.ipa",
-      release_notes: "release notes go here",
+      api_token: "Your API Token", #You can get it from https://portal.testapp.io/settings/api-credentials
+      app_id: "Your App ID", #You can get it from your app page in https://portal.testapp.io/apps
+      release: "ios",
+      ipa_file: "build/app.ipa",
+      release_notes: "My release notes here...",
       git_release_notes: true,
       git_commit_id: false,
       notify: true
     )
+    
+    clean_build_artifacts #optional
+    
   end
 ```
 
@@ -55,37 +61,22 @@ To upload after the fastlane `gym` action:
 
 ```ruby
   lane :development do
-    match(type: "development")
-    gym(export_method: "development")
+    
+    increment_version_code #[Optional] fastlane add_plugin increment_version_code
+    
+    gradle(task: "clean assembleDebug")
+    
     upload_to_testappio(
-      api_token: "Your API Token",
-      app_id: "Your App ID",
+      api_token: "Your API Token", #You can get it from https://portal.testapp.io/settings/api-credentials
+      app_id: "Your App ID", #You can get it from your app page in https://portal.testapp.io/apps
       release: "android",
-      apk_file: "/full/path/to/app.apk",
-      release_notes: "release notes go here",
+      apk_file: "app/build/outputs/apk/debug/app-debug.apk",
+      release_notes: "My release notes here...",
       git_release_notes: true,
       git_commit_id: false,
       notify: true
     )
-  end
-```
-
-##### iOS
-
-```ruby
-  lane :development do
-    match(type: "development")
-    gym(export_method: "development")
-    upload_to_testappio(
-      api_token: "Your API Token",
-      app_id: "Your App ID",
-      release: "ios",
-      ipa_file: "/full/path/to/app.ipa",
-      release_notes: "release notes go here",
-      git_release_notes: true,
-      git_commit_id: false,
-      notify: true
-    )
+    
   end
 ```
 
