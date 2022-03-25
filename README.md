@@ -46,13 +46,12 @@ To upload after the Fastlane `gym` action:
   
     increment_build_number
     match(type: "adhoc")
-    gym(export_method: "ad-hoc", output_directory: "build", output_name: "app.ipa")
+    gym(export_method: "ad-hoc")
   
     upload_to_testappio(
       api_token: "Your API Token", #You can get it from https://portal.testapp.io/settings/api-credentials
       app_id: "Your App ID", #You can get it from your app page in https://portal.testapp.io/apps
       release: "ios",
-      ipa_file: "build/app.ipa",
       release_notes: "My release notes here...",
       git_release_notes: true,
       git_commit_id: false,
@@ -71,13 +70,12 @@ To upload after the Fastlane `gym` action:
     
     increment_version_code #[Optional] fastlane add_plugin increment_version_code
     
-    gradle(task: "clean assembleDebug")
+    gradle(task: "clean assembleDebug") #or clean assembleRelease
     
     upload_to_testappio(
       api_token: "Your API Token", #You can get it from https://portal.testapp.io/settings/api-credentials
       app_id: "Your App ID", #You can get it from your app page in https://portal.testapp.io/apps
       release: "android",
-      apk_file: "app/build/outputs/apk/debug/app-debug.apk",
       release_notes: "My release notes here...",
       git_release_notes: true,
       git_commit_id: false,
