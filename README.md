@@ -103,10 +103,10 @@ _Fastlane_ is the easiest way to automate beta deployments and releases for  iOS
 
 ## Feedback & Support
 
-
 Developers built [TestApp.io](https://testapp.io) to solve the pain of app distribution for mobile app development teams.
 
 Join our [Slack](https://join.slack.com/t/testappio/shared_invite/zt-pvpoj3l2-epGYwGTaV3~3~0f7udNWoA) channel for feedback and support.
 
-Happy releasing 🎉
+Check out our [Help Center](https://help.testapp.io/) for more info and other integrations.
 
+Happy releasing 🎉
