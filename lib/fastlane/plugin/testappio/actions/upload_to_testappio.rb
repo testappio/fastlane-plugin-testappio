@@ -81,7 +81,7 @@ module Fastlane
                                        end),
           FastlaneCore::ConfigItem.new(key: :app_id,
                                        env_name: "TESTAPPIO_APP_ID",
-                                       description: "You can get it from your app page in https://portal.testapp.io/apps?select-for-integrations",
+                                       description: "You can get it from your app page in https://portal.testapp.io/apps?action=select-for-integrations",
                                        is_string: false),
           FastlaneCore::ConfigItem.new(key: :release,
                                        env_name: "TESTAPPIO_RELEASE",
