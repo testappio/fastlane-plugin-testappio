@@ -30,6 +30,19 @@ module Fastlane
         UI.user_error!('Error while calling ta-cli') if fatal
       end
 
+      def self.handle_force_update(outs, command)
+        fatal = false
+        outs.each do |error|
+          if error
+            if error =~ /Update is required because of breaking changes/
+              UI.command(`curl -Ls https://github.com/testappio/cli/releases/latest/download/install | bash`)
+              call_ta_cli(command)
+            end
+          end
+        end
+        UI.user_error!('Error while calling ta-cli') if fatal
+      end
+
       # Run the given command
       def self.call_ta_cli(command)
         UI.message("Starting ta-cli...")
@@ -54,6 +67,7 @@ module Fastlane
           unless exit_status.success? && error.empty?
             handle_error(error)
           end
+          handle_force_update(out, command)
         end
         out.join
       end
