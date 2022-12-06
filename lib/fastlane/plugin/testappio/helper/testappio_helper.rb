@@ -40,7 +40,7 @@ module Fastlane
             end
           end
         end
-        UI.user_error!('Error while calling ta-cli') if fatal
+        UI.user_error!('Error while updating ta-cli') if fatal
       end
 
       # Run the given command
