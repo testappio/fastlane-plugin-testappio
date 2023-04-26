@@ -5,53 +5,46 @@ module Fastlane
 
   module Helper
     class TestappioHelper
-      # Check if `ta_cli` exists, install it if not
       def self.check_ta_cli
-        unless `which ta-cli`.include?('ta-cli')
-          UI.error("ta-cli not found, installing")
-          UI.command(`curl -Ls https://github.com/testappio/cli/releases/latest/download/install | bash`)
-        end
+        return if system('which ta-cli > /dev/null 2>&1')
+
+        UI.error("ta-cli not found, installing")
+        raise 'Error installing ta-cli' unless system('curl -Ls https://github.com/testappio/cli/releases/latest/download/install | bash')
       end
 
-      # Handle errors from `ta_cli`, if contains 'Error', the process stops,
-      # otherwise, just print to user console
       def self.handle_error(errors)
-        fatal = false
+        any_error = false
         errors.each do |error|
           if error
             if error =~ /Error/
               UI.error(error.to_s)
-              fatal = true
+              any_error = true
             else
               UI.verbose(error.to_s)
             end
           end
         end
-        UI.user_error!('Error while calling ta-cli') if fatal
+
+        UI.user_error!('Error while calling ta-cli') if any_error
       end
 
       def self.handle_force_update(outs, command)
-        fatal = false
-        outs.each do |error|
-          if error
-            if error =~ /Update is required because of breaking changes/
-              UI.command(`curl -Ls https://github.com/testappio/cli/releases/latest/download/install | bash`)
-              call_ta_cli(command)
-            end
-          end
-        end
-        UI.user_error!('Error while updating ta-cli') if fatal
+        return unless outs.any? { |out| out =~ /Update is required because of breaking changes/ }
+
+        UI.command('curl -Ls https://github.com/testappio/cli/releases/latest/download/install | bash') &&
+          call_ta_cli(command)
+        UI.user_error!('Error while updating ta-cli')
       end
 
-      # Run the given command
       def self.call_ta_cli(command)
         UI.message("Starting ta-cli...")
-        require 'open3'
+
         if FastlaneCore::Globals.verbose?
           UI.verbose("ta-cli command:\n\n")
           UI.command(command.to_s)
           UI.verbose("\n\n")
         end
+
         final_command = command.map { |arg| Shellwords.escape(arg) }.join(" ")
         out = []
         error = []
@@ -64,10 +57,8 @@ module Fastlane
             error << line.strip!
           end
           exit_status = wait_thr.value
-          unless exit_status.success? && error.empty?
-            handle_error(error)
-          end
-          handle_force_update(out, command)
+          handle_force_update(out, command) if error.empty?
+          handle_error(error) unless exit_status.success?
         end
         out.join
       end

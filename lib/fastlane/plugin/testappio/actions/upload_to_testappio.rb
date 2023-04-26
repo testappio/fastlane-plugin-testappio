@@ -2,11 +2,10 @@ module Fastlane
   module Actions
     class UploadToTestappioAction < Action
       SUPPORTED_FILE_EXTENSIONS = ["apk", "ipa"]
+
       def self.run(params)
-        # Check if ta-cli is installed
         Helper::TestappioHelper.check_ta_cli
 
-        # read the parameters
         api_token = params[:api_token]
         app_id = params[:app_id]
         apk_file = params[:apk_file]
@@ -20,32 +19,31 @@ module Fastlane
         validate_file_path(apk_file) unless release == "ios"
         validate_file_path(ipa_file) unless release == "android"
 
-        command = ["ta-cli"]
-        command.push("publish")
-        command.push("--api_token=#{api_token}")
-        command.push("--app_id=#{app_id}")
-        command.push("--release=#{release}")
+        command = ["ta-cli", "publish",
+                   "--api_token=#{api_token}",
+                   "--app_id=#{app_id}",
+                   "--release=#{release}"]
+
         command.push("--apk=#{apk_file}") unless release == "ios"
         command.push("--ipa=#{ipa_file}") unless release == "android"
-        command.push("--release_notes=#{release_notes}")
-        command.push("--git_release_notes=#{git_release_notes}")
-        command.push("--git_commit_id=#{git_commit_id}")
-        command.push("--notify=#{notify}")
-        command.push("--source=Fastlane")
+
+        command += ["--release_notes=#{release_notes}",
+                    "--git_release_notes=#{git_release_notes}",
+                    "--git_commit_id=#{git_commit_id}",
+                    "--notify=#{notify}",
+                    "--source=Fastlane"]
 
         UI.message("Uploading to TestApp.io")
         Helper::TestappioHelper.call_ta_cli(command)
         UI.success("Successfully uploaded to TestApp.io!")
       end
 
-      # Validate file_path.
       def self.validate_file_path(file_path)
         UI.user_error!("No file found at '#{file_path}'.") unless File.exist?(file_path)
 
-        # Validate file extension.
-        file_path_parts = file_path.split(".")
-        unless file_path_parts.length > 1 && SUPPORTED_FILE_EXTENSIONS.include?(file_path_parts.last)
-          UI.user_error!("file_path is invalid, only files with extensions " + SUPPORTED_FILE_EXTENSIONS.to_s + " are allowed to be uploaded.")
+        file_ext = File.extname(file_path).delete('.')
+        unless SUPPORTED_FILE_EXTENSIONS.include?(file_ext)
+          UI.user_error!("file_path is invalid, only files with extensions #{SUPPORTED_FILE_EXTENSIONS} are allowed to be uploaded.")
         end
       end
 
