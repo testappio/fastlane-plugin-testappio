@@ -31,7 +31,7 @@ module Fastlane
         validate_file_path(apk_file) unless release == "ios"
         validate_file_path(ipa_file) unless release == "android"
 
-        command = ["ta-cli", "version",
+        command = ["ta-cli", "publish",
                    "--api_token=#{api_token}",
                    "--app_id=#{app_id}",
                    "--release=#{release}"]
