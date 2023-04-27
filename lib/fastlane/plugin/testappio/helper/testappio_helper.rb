@@ -102,7 +102,11 @@ module Fastlane
         Open3.popen3(final_command) do |stdin, stdout, stderr, wait_thr|
           while (line = stdout.gets)
             out << line
-            UI.message(line.strip!) if FastlaneCore::Globals.verbose? && !line.strip.empty?
+            line.strip!
+
+            # Print output as it's generated
+            UI.message(line) unless line.empty?
+
           end
           while (line = stderr.gets)
             error << line.strip!

@@ -43,7 +43,9 @@ module Fastlane
                     "--git_release_notes=#{git_release_notes}",
                     "--git_commit_id=#{git_commit_id}",
                     "--notify=#{notify}",
-                    "--source=Fastlane"]
+                    "--self_update=#{self_update}",
+                    "--source=Fastlane",
+                    "--source_version=#{Fastlane::Testappio::VERSION}"]
 
         UI.message("Uploading to TestApp.io")
         Helper::TestappioHelper.call_ta_cli(command)
