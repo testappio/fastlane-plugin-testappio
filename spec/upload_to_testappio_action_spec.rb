@@ -13,7 +13,8 @@ describe Fastlane::Actions::UploadToTestappioAction do
             release_notes: 'Manual release notes',
             git_release_notes: true,
             git_commit_id: false,
-            notify: false
+            notify: false,
+            self_update: true
           )
         end").runner.execute(:test)
       end.to raise_error(anything)

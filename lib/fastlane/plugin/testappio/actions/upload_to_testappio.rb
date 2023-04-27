@@ -4,7 +4,12 @@ module Fastlane
       SUPPORTED_FILE_EXTENSIONS = ["apk", "ipa"]
 
       def self.run(params)
-        Helper::TestappioHelper.check_ta_cli
+
+        # Check if `ta_cli` exists, install it if not
+        unless Helper::TestappioHelper.check_ta_cli
+          UI.error("Error detecting ta-cli")
+          return
+        end
 
         api_token = params[:api_token]
         app_id = params[:app_id]
@@ -15,11 +20,18 @@ module Fastlane
         git_release_notes = params[:git_release_notes]
         git_commit_id = params[:git_commit_id]
         notify = params[:notify]
+        self_update = params[:self_update]
+
+        # Check if ta-cli needs to be updated
+        unless Helper::TestappioHelper.check_update(self_update)
+          UI.error("Error updating ta-cli")
+          return
+        end
 
         validate_file_path(apk_file) unless release == "ios"
         validate_file_path(ipa_file) unless release == "android"
 
-        command = ["ta-cli", "publish",
+        command = ["ta-cli", "version",
                    "--api_token=#{api_token}",
                    "--app_id=#{app_id}",
                    "--release=#{release}"]
@@ -120,7 +132,13 @@ module Fastlane
                                       description: "Send notificaitons to your team members about this release: true or false",
                                       optional: true,
                                       is_string: false,
-                                      default_value: false)
+                                      default_value: false),
+          FastlaneCore::ConfigItem.new(key: :self_update,
+                                      env_name: "TESTAPPIO_SELF_UPDATE",
+                                      description: "Automatically update ta-cli if a new version is available or required: true or false",
+                                      optional: true,
+                                      is_string: false,
+                                      default_value: true)
         ]
       end
 
