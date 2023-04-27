@@ -18,19 +18,14 @@ Gem::Specification.new do |spec|
 
   spec.required_ruby_version = '>= 2.5'
 
-  # Don't add a dependency to fastlane or fastlane_re
-  # since this would cause a circular dependency
-
-  # spec.add_dependency 'your-dependency', '~> 1.0.0'
-
-  spec.add_development_dependency('bundler')
-  spec.add_development_dependency('fastlane', '>= 2.204.3')
-  spec.add_development_dependency('pry')
-  spec.add_development_dependency('rake')
-  spec.add_development_dependency('rspec')
-  spec.add_development_dependency('rspec_junit_formatter')
+  spec.add_development_dependency('bundler', '~> 2.0')
+  spec.add_development_dependency('fastlane', '~> 2.204', '>= 2.204.3')
+  spec.add_development_dependency('pry', '~> 0.13')
+  spec.add_development_dependency('rake', '~> 13.0')
+  spec.add_development_dependency('rspec', '~> 3.0')
+  spec.add_development_dependency('rspec_junit_formatter', '~> 0.4')
   spec.add_development_dependency('rubocop', '1.12.1')
-  spec.add_development_dependency('rubocop-performance')
-  spec.add_development_dependency('rubocop-require_tools')
-  spec.add_development_dependency('simplecov')
+  spec.add_development_dependency('rubocop-performance', '~> 1.0')
+  spec.add_development_dependency('rubocop-require_tools', '~> 1.0')
+  spec.add_development_dependency('simplecov', '~> 0.21')
 end
