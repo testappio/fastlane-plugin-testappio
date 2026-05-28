@@ -13,7 +13,7 @@ jobs:
       contents: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.2'
@@ -25,7 +25,7 @@ jobs:
       - name: Push to RubyGems
         run: gem push fastlane-plugin-testappio-*.gem
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: fastlane-plugin-testappio-*.gem
           generate_release_notes: true
