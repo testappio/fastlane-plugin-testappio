@@ -25,7 +25,7 @@ jobs:
       - name: Push to RubyGems
         run: gem push fastlane-plugin-testappio-*.gem
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: fastlane-plugin-testappio-*.gem
           generate_release_notes: true
