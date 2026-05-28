@@ -9,23 +9,35 @@ Gem::Specification.new do |spec|
   spec.email         = 'support@testapp.io'
 
   spec.summary       = 'Deploy your Android & iOS to TestApp.io'
+  spec.description   = <<~DESC
+    A Fastlane plugin that uploads Android (.apk) and iOS (.ipa) builds to TestApp.io,
+    notifying your team for testing and feedback. Wraps the ta-cli binary to provide a
+    single upload_to_testappio Fastlane action with platform detection, release notes
+    from git, and selective team notifications.
+  DESC
   spec.homepage      = "https://github.com/testappio/fastlane-plugin-testappio"
   spec.license       = "MIT"
 
-  spec.files         = Dir["lib/**/*"] + %w(README.md LICENSE)
-  spec.test_files    = spec.files.grep(%r{^(test|spec|features)/})
+  spec.files         = Dir["lib/**/*"] + %w(README.md LICENSE CHANGELOG.md)
   spec.require_paths = ['lib']
 
-  spec.required_ruby_version = '>= 2.6'
+  spec.required_ruby_version = '>= 3.0'
+
+  spec.metadata = {
+    "rubygems_mfa_required" => "true",
+    "source_code_uri"       => "https://github.com/testappio/fastlane-plugin-testappio",
+    "changelog_uri"         => "https://github.com/testappio/fastlane-plugin-testappio/blob/main/CHANGELOG.md",
+    "bug_tracker_uri"       => "https://github.com/testappio/fastlane-plugin-testappio/issues"
+  }
 
   spec.add_development_dependency('bundler', '~> 2.0')
-  spec.add_development_dependency('fastlane', '~> 2.204', '>= 2.204.3')
-  spec.add_development_dependency('pry', '~> 0.13')
+  spec.add_development_dependency('fastlane', '~> 2.217')
+  spec.add_development_dependency('pry', '~> 0.14')
   spec.add_development_dependency('rake', '~> 13.0')
   spec.add_development_dependency('rspec', '~> 3.0')
-  spec.add_development_dependency('rspec_junit_formatter', '~> 0.4')
-  spec.add_development_dependency('rubocop', '1.12.1')
-  spec.add_development_dependency('rubocop-performance', '~> 1.17.1')
-  spec.add_development_dependency('rubocop-require_tools', '~> 0.1.2')
-  spec.add_development_dependency('simplecov', '~> 0.21')
+  spec.add_development_dependency('rspec_junit_formatter', '~> 0.6')
+  spec.add_development_dependency('rubocop', '~> 1.50')
+  spec.add_development_dependency('rubocop-performance', '~> 1.20')
+  spec.add_development_dependency('simplecov', '~> 0.22')
+  spec.add_development_dependency('simplecov-cobertura', '~> 3.1')
 end

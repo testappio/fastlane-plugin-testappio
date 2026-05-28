@@ -1,5 +1,7 @@
 *.gem
 Gemfile.lock
+pkg/
+.bundle/
 
 ## Documentation cache and generated files:
 /.yardoc/
@@ -10,3 +12,10 @@ fastlane/README.md
 fastlane/report.xml
 coverage
 test-results
+
+## Local working-context (not for the public repo)
+.claude/
+CLAUDE.md
+AGENTS.md
+docs/superpowers/
+MEMORY.md

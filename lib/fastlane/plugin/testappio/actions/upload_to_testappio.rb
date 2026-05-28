@@ -4,7 +4,6 @@ module Fastlane
       SUPPORTED_FILE_EXTENSIONS = ["apk", "ipa"]
 
       def self.run(params)
-
         # Check if `ta_cli` exists, install it if not
         unless Helper::TestappioHelper.check_ta_cli
           UI.error("Error detecting ta-cli")
@@ -53,6 +52,8 @@ module Fastlane
       end
 
       def self.validate_file_path(file_path)
+        return if file_path.nil?
+
         UI.user_error!("No file found at '#{file_path}'.") unless File.exist?(file_path)
 
         file_ext = File.extname(file_path).delete('.')
@@ -99,48 +100,48 @@ module Fastlane
                                        env_name: "TESTAPPIO_RELEASE",
                                        description: "It can be either both or android or ios",
                                        is_string: true,
-                                      default_value: Actions.lane_context[Actions::SharedValues::PLATFORM_NAME]),
+                                       default_value: Actions.lane_context[Actions::SharedValues::PLATFORM_NAME]),
           FastlaneCore::ConfigItem.new(key: :apk_file,
-                                      env_name: "TESTAPPIO_ANDROID_PATH",
-                                      description: "Full path to the Android .apk file",
-                                      optional: true,
-                                      is_string: true,
-                                      default_value: default_file_path),
+                                       env_name: "TESTAPPIO_ANDROID_PATH",
+                                       description: "Full path to the Android .apk file",
+                                       optional: true,
+                                       is_string: true,
+                                       default_value: default_file_path),
           FastlaneCore::ConfigItem.new(key: :ipa_file,
-                                      env_name: "TESTAPPIO_IOS_PATH",
-                                      description: "Full path to the iOS .ipa file",
-                                      optional: true,
-                                      is_string: true,
-                                      default_value: default_file_path),
+                                       env_name: "TESTAPPIO_IOS_PATH",
+                                       description: "Full path to the iOS .ipa file",
+                                       optional: true,
+                                       is_string: true,
+                                       default_value: default_file_path),
           FastlaneCore::ConfigItem.new(key: :release_notes,
-                                      env_name: "TESTAPPIO_RELEASE_NOTES",
-                                      description: "Manually add the release notes to be displayed for the testers",
-                                      optional: true,
-                                      is_string: true),
+                                       env_name: "TESTAPPIO_RELEASE_NOTES",
+                                       description: "Manually add the release notes to be displayed for the testers",
+                                       optional: true,
+                                       is_string: true),
           FastlaneCore::ConfigItem.new(key: :git_release_notes,
-                                      env_name: "TESTAPPIO_GIT_RELEASE_NOTES",
-                                      description: "Collect release notes from the latest git commit message to be displayed for the testers: true or false",
-                                      optional: true,
-                                      is_string: false,
-                                      default_value: true),
+                                       env_name: "TESTAPPIO_GIT_RELEASE_NOTES",
+                                       description: "Collect release notes from the latest git commit message to be displayed for the testers: true or false",
+                                       optional: true,
+                                       is_string: false,
+                                       default_value: true),
           FastlaneCore::ConfigItem.new(key: :git_commit_id,
-                                      env_name: "TESTAPPIO_GIT_COMMIT_ID",
-                                      description: "Include the last commit ID in the release notes (works with both release notes option): true or false",
-                                      optional: true,
-                                      is_string: false,
-                                      default_value: false),
+                                       env_name: "TESTAPPIO_GIT_COMMIT_ID",
+                                       description: "Include the last commit ID in the release notes (works with both release notes option): true or false",
+                                       optional: true,
+                                       is_string: false,
+                                       default_value: false),
           FastlaneCore::ConfigItem.new(key: :notify,
-                                      env_name: "TESTAPPIO_NOTIFY",
-                                      description: "Send notificaitons to your team members about this release: true or false",
-                                      optional: true,
-                                      is_string: false,
-                                      default_value: false),
+                                       env_name: "TESTAPPIO_NOTIFY",
+                                       description: "Send notificaitons to your team members about this release: true or false",
+                                       optional: true,
+                                       is_string: false,
+                                       default_value: false),
           FastlaneCore::ConfigItem.new(key: :self_update,
-                                      env_name: "TESTAPPIO_SELF_UPDATE",
-                                      description: "Automatically update ta-cli if a new version is available or required: true or false",
-                                      optional: true,
-                                      is_string: false,
-                                      default_value: true)
+                                       env_name: "TESTAPPIO_SELF_UPDATE",
+                                       description: "Automatically update ta-cli if a new version is available or required: true or false",
+                                       optional: true,
+                                       is_string: false,
+                                       default_value: true)
         ]
       end
 
@@ -149,7 +150,7 @@ module Fastlane
       end
 
       def self.return_value
-        nill
+        nil
       end
 
       def self.authors

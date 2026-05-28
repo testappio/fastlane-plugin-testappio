@@ -1,23 +1,19 @@
 ---
-require:
-- rubocop/require_tools
+plugins:
 - rubocop-performance
 AllCops:
-  TargetRubyVersion: 2.5
+  TargetRubyVersion: 3.0
   NewCops: enable
+  SuggestExtensions: false
   Include:
   - "**/*.rb"
   - "**/*file"
   - "**/*.gemspec"
-  - "*/lib/assets/*Template"
-  - "*/lib/assets/*TemplateAndroid"
   Exclude:
-  - "**/lib/assets/custom_action_template.rb"
-  - "./vendor/**/*"
-  - "**/lib/assets/DefaultFastfileTemplate"
-  - "**/lib/assets/MatchfileTemplate"
-  - "**/spec/fixtures/broken_files/broken_file.rb"
-  - "**/*.provisionprofile"
+  - "vendor/**/*"
+  - "pkg/**/*"
+  - "coverage/**/*"
+  - "fastlane-plugin-testappio-*.gem"
 Style/MultipleComparison:
   Enabled: false
 Style/PercentLiteralDelimiters:
@@ -50,22 +46,12 @@ Style/TernaryParentheses:
   Enabled: false
 Style/EmptyMethod:
   Enabled: false
+Gemspec/DevelopmentDependencies:
+  # Fastlane plugins conventionally declare dev deps in the gemspec, not Gemfile.
+  Enabled: false
 Lint/UselessAssignment:
   Exclude:
   - "**/spec/**/*"
-Require/MissingRequireStatement:
-  Exclude:
-  - "**/spec/**/*.rb"
-  - "**/spec_helper.rb"
-  - spaceship/lib/spaceship/babosa_fix.rb
-  - fastlane_core/lib/fastlane_core/ui/disable_colors.rb
-  - "**/Fastfile"
-  - "**/*.gemspec"
-  - rakelib/**/*
-  - "**/*.rake"
-  - "**/Rakefile"
-  - fastlane/**/*
-  - supply/**/*
 Layout/FirstHashElementIndentation:
   Enabled: false
 Layout/HashAlignment:
@@ -99,6 +85,8 @@ Metrics/MethodLength:
   Enabled: false
 Metrics/CyclomaticComplexity:
   Enabled: false
+Metrics/PerceivedComplexity:
+  Enabled: false
 Style/WordArray:
   MinSize: 19
 Style/SignalException:
@@ -129,13 +117,12 @@ Lint/UnusedMethodArgument:
 Lint/ParenthesesAsGroupedExpression:
   Exclude:
   - "**/spec/**/*"
-Naming/PredicateName:
+Naming/PredicatePrefix:
+  Enabled: false
+Naming/PredicateMethod:
   Enabled: false
 Style/PerlBackrefs:
   Enabled: false
-Layout/SpaceAroundOperators:
-  Exclude:
-  - "**/spec/actions_specs/xcodebuild_spec.rb"
 Naming/FileName:
   Exclude:
   - "**/Dangerfile"
@@ -160,7 +147,7 @@ Style/CollectionMethods:
   Enabled: false
 Style/MethodCallWithArgsParentheses:
   Enabled: true
-  IgnoredMethods:
+  AllowedMethods:
   - require
   - require_relative
   - fastlane_require
@@ -182,3 +169,14 @@ Style/MethodCallWithArgsParentheses:
   - context
   - before
   - after
+  - expect
+  - allow
+  - receive
+  - include
+  - eq
+  - match
+  - satisfy
+  - puts
+  - warn
+  - return
+  - next
