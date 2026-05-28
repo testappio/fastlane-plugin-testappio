@@ -88,9 +88,9 @@ module Fastlane
         [
           FastlaneCore::ConfigItem.new(key: :api_token,
                                        env_name: "TESTAPPIO_API_TOKEN",
-                                       description: "You can get it from https://portal.testapp.io/settings/api-credentials",
+                                       description: "You can get it from https://portal.testapp.io/profile/tokens",
                                        verify_block: proc do |value|
-                                         UI.user_error!("No API token provided. You can get it from https://portal.testapp.io/settings/api-credentials") unless value && !value.empty?
+                                         UI.user_error!("No API token provided. You can get it from https://portal.testapp.io/profile/tokens") unless value && !value.empty?
                                        end),
           FastlaneCore::ConfigItem.new(key: :app_id,
                                        env_name: "TESTAPPIO_APP_ID",

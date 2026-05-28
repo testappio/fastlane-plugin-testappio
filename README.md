@@ -34,14 +34,14 @@ lane :beta do
 end
 ```
 
-Get your `api_token` at <https://portal.testapp.io/settings/api-credentials>.
+Get your `api_token` at <https://portal.testapp.io/profile/tokens>.
 Get your `app_id` at <https://portal.testapp.io/apps>.
 
 ## Configuration
 
 | Key | Description | Env var | Default |
 |---|---|---|---|
-| `api_token` | API token from <https://portal.testapp.io/settings/api-credentials> | `TESTAPPIO_API_TOKEN` | — |
+| `api_token` | API token from <https://portal.testapp.io/profile/tokens> | `TESTAPPIO_API_TOKEN` | — |
 | `app_id` | App ID from your <https://portal.testapp.io/apps> page | `TESTAPPIO_APP_ID` | — |
 | `release` | `ios`, `android`, or `both` | `TESTAPPIO_RELEASE` | current platform |
 | `apk_file` | Path to the Android `.apk` | `TESTAPPIO_ANDROID_PATH` | gradle's output |
