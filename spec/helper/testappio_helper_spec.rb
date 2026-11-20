@@ -2,6 +2,57 @@ describe Fastlane::Helper::TestappioHelper do
   let(:install_command) { ["bash", "-o", "pipefail", "-c", /curl -fLs.*install \| bash/] }
   let(:credential_free_env) { { "TESTAPPIO_API_TOKEN" => nil, "API_TOKEN" => nil } }
 
+  # All caller reports go to this offline transport, including failure specs.
+  let(:sent_reports) { [] }
+  before do
+    transport = instance_double(Net::HTTP)
+    allow(Net::HTTP).to receive(:new).and_return(transport)
+    allow(transport).to receive(:use_ssl=)
+    allow(transport).to receive(:open_timeout=)
+    allow(transport).to receive(:write_timeout=)
+    allow(transport).to receive(:read_timeout=)
+    allow(transport).to receive(:request) { |req| sent_reports << JSON.parse(req.body) }
+  end
+
+  describe "terminal caller reporting" do
+    def expect_caller_report(stage, exit_class)
+      expect(sent_reports.size).to eq(1)
+      report = sent_reports.first
+      expect(report["message"]).to eq("Uploader process failed")
+      expect(report["level"]).to eq("error")
+      expect(report["tags"]).to include("caller" => "fastlane", "stage" => stage, "exit_class" => exit_class)
+      expect(report["fingerprint"]).to eq(["ta-cli", "caller", "fastlane", stage, exit_class])
+      expect(report.to_s).not_to include("private-marker")
+    end
+
+    it "reports a missing publish executable once" do
+      allow(Open3).to receive(:popen3).and_raise(Errno::ENOENT, "private-marker")
+      expect { described_class.call_ta_cli(["ta-cli"]) }.to raise_error(StandardError)
+      expect_caller_report("publish", "spawn")
+    end
+
+    it "reports an unexpected signal but omits ordinary CLI failures and cancellation" do
+      ["exit 1", 'Process.kill("TERM",Process.pid)', 'warn "private-marker"; Process.kill("KILL",Process.pid)'].each do |code|
+        expect { described_class.call_ta_cli([RbConfig.ruby, "-e", code]) }.to raise_error(FastlaneCore::Interface::FastlaneError)
+      end
+      expect_caller_report("publish", "signal")
+    end
+
+    it "preserves an installer spawn error even when reporting cannot connect" do
+      allow(FastlaneCore::Helper).to receive(:which).and_return(nil)
+      allow(Open3).to receive(:capture3).and_raise(Errno::ENOENT)
+      expect(Net::HTTP).to receive(:new).and_raise(SocketError)
+      expect { described_class.check_ta_cli }.to raise_error(Errno::ENOENT)
+    end
+
+    it "reports an unsuccessful bootstrap without child output" do
+      allow(FastlaneCore::Helper).to receive(:which).and_return(nil)
+      allow(Open3).to receive(:capture3).and_return(["private-marker", "", command_status(22)])
+      expect { described_class.check_ta_cli }.to raise_error(FastlaneCore::Interface::FastlaneError)
+      expect_caller_report("install", "bootstrap")
+    end
+  end
+
   describe ".call_ta_cli verbose logging" do
     let(:token) { SecureRandom.hex(16) }
     let(:command) do
@@ -75,6 +126,25 @@ describe Fastlane::Helper::TestappioHelper do
       allow(Open3).to receive(:capture3).with(credential_free_env, "ta-cli", "version").and_return(*responses)
     end
 
+    it "bounds the installer download" do
+      expect(described_class::INSTALL_COMMAND.last).to match(/--connect-timeout [1-9]\d*/)
+      expect(described_class::INSTALL_COMMAND.last).to match(/--max-time [1-9]\d*/)
+    end
+
+    it "keeps an unavailable version check advisory without claiming the CLI is current" do
+      stub_ta_cli_version(["Version check unavailable", "", command_status(0)])
+      expect(FastlaneCore::UI).not_to receive(:success)
+      expect(FastlaneCore::UI).to receive(:important).with(/unavailable/i)
+      expect(described_class.check_update(true)).to be true
+    end
+
+    it "treats a legacy version banner without a lookup result as unknown" do
+      stub_ta_cli_version(["TA-CLI version 1.12.0", "", command_status(0)])
+      expect(FastlaneCore::UI).not_to receive(:success)
+      expect(FastlaneCore::UI).to receive(:important).with(/unavailable/i)
+      expect(described_class.check_update(false)).to be true
+    end
+
     it "returns true when ta-cli is already up-to-date" do
       stub_ta_cli_version(["ta-cli is up-to-date", "", command_status(0)])
       expect(described_class.check_update(false)).to be true
@@ -105,6 +175,15 @@ describe Fastlane::Helper::TestappioHelper do
       expect(described_class.check_update(true)).to be true
     end
 
+    it "keeps an inconclusive post-update check advisory" do
+      stub_ta_cli_version(["New version available", "", command_status(0)], ["Version check unavailable", "", command_status(0)])
+      allow(Open3).to receive(:capture3).with(credential_free_env, *install_command)
+                                        .and_return(["ta-cli successfully installed", "", command_status(0)])
+      expect(FastlaneCore::UI).not_to receive(:success)
+      expect(FastlaneCore::UI).to receive(:important).with(/unavailable/i)
+      expect(described_class.check_update(true)).to be true
+    end
+
     it "raises when post-update version is still outdated" do
       stub_ta_cli_version(["New version available", "", command_status(0)], [required_update_notice, "", command_status(0)])
       allow(Open3).to receive(:capture3).with(credential_free_env, *install_command)
@@ -121,12 +200,11 @@ describe Fastlane::Helper::TestappioHelper do
         .to raise_error(FastlaneCore::Interface::FastlaneError, /still outdated/)
     end
 
-    it "raises when curl update output is unexpected" do
-      stub_ta_cli_version(["New version available", "", command_status(0)])
+    it "verifies a successful update through the installed CLI even if the installer wording changes" do
+      stub_ta_cli_version(["New version available", "", command_status(0)], ["You are using the latest version", "", command_status(0)])
       allow(Open3).to receive(:capture3).with(credential_free_env, *install_command)
                                         .and_return(["unexpected installer output", "", command_status(0)])
-      expect { described_class.check_update(true) }
-        .to raise_error(FastlaneCore::Interface::FastlaneError, /Error updating ta-cli/)
+      expect(described_class.check_update(true)).to be true
     end
 
     it "fails a non-zero update even when its output includes a success message" do
@@ -155,6 +233,14 @@ describe Fastlane::Helper::TestappioHelper do
                                            .ordered.and_return(["ok", "", command_status(0)])
         expect(described_class.check_update(true)).to be true
       end
+    end
+
+    it "reports a signaled post-update check even if it printed an update notice" do
+      status = instance_double(Process::Status, success?: nil, signaled?: true, exitstatus: nil, termsig: 9)
+      stub_ta_cli_version(["New version available", "", command_status(0)], [required_update_notice, "", status])
+      allow(Open3).to receive(:capture3).with(credential_free_env, *install_command).and_return(["", "", command_status(0)])
+      expect { described_class.check_update(true) }.to raise_error(FastlaneCore::Interface::FastlaneError, /signal 9/)
+      expect(sent_reports.map { |event| event["fingerprint"] }).to eq([%w[ta-cli caller fastlane version signal]])
     end
 
     it "fails a version check terminated by a signal even after printing a forced update notice" do

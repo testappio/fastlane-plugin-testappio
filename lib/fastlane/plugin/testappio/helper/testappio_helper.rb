@@ -1,15 +1,22 @@
 require 'fastlane_core/helper'
 require 'fastlane_core/ui/ui'
 require 'open3'
+require 'net/http'
+require 'json'
+require 'securerandom'
 
 module Fastlane
   UI = FastlaneCore::UI unless Fastlane.const_defined?(:UI)
 
   module Helper
     class TestappioHelper
-      INSTALL_COMMAND = ["bash", "-o", "pipefail", "-c", "curl -fLs https://github.com/testappio/cli/releases/latest/download/install | bash"].freeze
+      INSTALL_COMMAND = ["bash", "-o", "pipefail", "-c", "curl -fLs --connect-timeout 10 --max-time 60 https://github.com/testappio/cli/releases/latest/download/install | bash"].freeze
+      # Public client ingest endpoint, shared with ta-cli. No runner Sentry configuration is used.
+      REPORT_ENDPOINT = URI("https://o555352.ingest.sentry.io/api/4504532348239872/store/").freeze
+      REPORT_KEY = "6fbda59be4f5448e933730ce62fa5120".freeze
       VERSION_COMMAND = ["ta-cli", "version"].freeze
       ENV_WITHOUT_TOKEN = { "TESTAPPIO_API_TOKEN" => nil, "API_TOKEN" => nil }.freeze
+      CURRENT_VERSION_NOTICE = /You are using the latest version|ta-cli is (?:already )?up-to-date/i.freeze
       REQUIRED_UPDATE_NOTICE = "Update necessary".freeze
 
       # Check if `ta_cli` exists, install it if not
@@ -17,8 +24,8 @@ module Fastlane
         unless FastlaneCore::Helper.which("ta-cli")
           UI.error("ta-cli not found, installing")
 
-          output, stderr, status = capture_cli(INSTALL_COMMAND, api_token)
-          fail_command("Error installing ta-cli", status, output, stderr) unless status.success?
+          output, stderr, status = capture_cli(INSTALL_COMMAND, api_token, "install")
+          fail_command("install", "Error installing ta-cli", status, output, stderr) unless status.success?
           UI.success("ta-cli installed")
         end
 
@@ -27,10 +34,10 @@ module Fastlane
 
       # Check if there is an update available for `ta_cli`, and install it if necessary
       def self.check_update(self_update, api_token = nil)
-        version_output, version_error, version_status = capture_cli(VERSION_COMMAND, api_token)
+        version_output, version_error, version_status = capture_cli(VERSION_COMMAND, api_token, "version")
         forced = [version_output, version_error].any? { |text| text.include?(REQUIRED_UPDATE_NOTICE) }
         unless version_status.success? || (forced && !version_status.signaled?)
-          fail_command("Error checking ta-cli version", version_status, version_output, version_error)
+          fail_command("version", "Error checking ta-cli version", version_status, version_output, version_error)
         end
 
         if forced
@@ -48,24 +55,29 @@ module Fastlane
             return true
           end
         else
-          UI.success("ta-cli is already up-to-date")
+          if version_output.match?(CURRENT_VERSION_NOTICE)
+            UI.success("ta-cli is already up-to-date")
+          else
+            UI.important("Version check unavailable. Continuing with the installed ta-cli.")
+          end
           return true
         end
 
-        update_output, update_error, update_status = capture_cli(INSTALL_COMMAND, api_token)
-        fail_command("Error updating ta-cli", update_status, update_output, update_error) unless update_status.success?
-        unless update_output.include?("ta-cli successfully installed") || update_output.include?("ta-cli has been updated")
-          UI.user_error!("Error updating ta-cli: #{update_output.strip}")
-        end
-
-        version_output, version_error, version_status = capture_cli(VERSION_COMMAND, api_token)
-        # A still-forced update exits nonzero, so check the notice before the exit status.
+        update_output, update_error, update_status = capture_cli(INSTALL_COMMAND, api_token, "update")
+        fail_command("update", "Error updating ta-cli", update_status, update_output, update_error) unless update_status.success?
+        version_output, version_error, version_status = capture_cli(VERSION_COMMAND, api_token, "version")
+        fail_command("version", "Error checking ta-cli version", version_status, version_output, version_error) if version_status.signaled?
+        # A still-forced update exits nonzero, so check the notice before the exit code.
         if [version_output, version_error].any? { |text| text.include?(REQUIRED_UPDATE_NOTICE) } || version_output.include?("New version available")
           UI.user_error!("Error updating ta-cli: the version is still outdated")
         end
-        fail_command("Error checking ta-cli version", version_status, version_output, version_error) unless version_status.success?
+        fail_command("version", "Error checking ta-cli version", version_status, version_output, version_error) unless version_status.success?
 
-        UI.success("ta-cli has been updated successfully")
+        if version_output.match?(CURRENT_VERSION_NOTICE)
+          UI.success("ta-cli has been updated successfully")
+        else
+          UI.important("Update installed. Version check unavailable.")
+        end
         true
       end
 
@@ -106,9 +118,12 @@ module Fastlane
           err_thread.join
 
           exit_status = wait_thr.value
-          fail_command("Error while calling ta-cli", exit_status, stderr_lines.join) unless exit_status.success?
+          fail_command("publish", "Error while calling ta-cli", exit_status, stderr_lines.join) unless exit_status.success?
         end
         out.join
+      rescue Errno::ENOENT, Errno::ENOEXEC
+        report_failure("publish", "spawn")
+        raise
       ensure
         # If popen3's block raised before threads joined, make sure no readers
         # are left holding pipe FDs.
@@ -116,16 +131,26 @@ module Fastlane
         err_thread.kill if err_thread&.alive?
       end
 
-      def self.capture_cli(command, api_token)
+      def self.capture_cli(command, api_token, stage)
         output, stderr, status = Open3.capture3(ENV_WITHOUT_TOKEN, *command)
         output = redact_token(output, api_token)
         stderr = redact_token(stderr, api_token)
         UI.verbose(output) unless output.empty?
         UI.verbose(stderr) unless stderr.empty?
         [output, stderr, status]
+      rescue Errno::ENOENT, Errno::ENOEXEC
+        report_failure(stage, "spawn")
+        raise
       end
 
-      def self.fail_command(message, status, *diagnostics)
+      def self.fail_command(stage, message, status, *diagnostics)
+        if status.signaled?
+          report_failure(stage, "signal") unless [Signal.list["INT"], Signal.list["TERM"], Signal.list["HUP"]].include?(status.termsig)
+        elsif ["install", "update"].include?(stage) && ![6, 7, 126, 127, 130, 143].include?(status.exitstatus)
+          # Permission/tool failures are local. Preserve their original CI diagnostic.
+          local_error = diagnostics.any? { |text| text.match?(/^error: (install:|.* is required\.)/) }
+          report_failure(stage, "bootstrap") unless local_error
+        end
         reason = status.signaled? ? "signal #{status.termsig}" : "exit status #{status.exitstatus}"
         message = "#{message} (#{reason})"
         diagnostic = diagnostics.flat_map(&:lines).map(&:strip).reject(&:empty?).join(" | ")
@@ -133,12 +158,34 @@ module Fastlane
         UI.user_error!(message)
       end
 
+      # The CLI cannot report a failed spawn, bootstrap or abnormal termination.
+      # Send only fields constructed here. Never initialize the lane's global SDK.
+      def self.report_failure(stage, exit_class)
+        env = ENV.fetch("TESTAPPIO_ENV", "")
+        env = ENV["ENV"] if env.empty?
+        payload = {
+          event_id: SecureRandom.hex(16), platform: "ruby", level: "error", message: "Uploader process failed",
+          environment: %w[dev local].include?(env) ? env : "production",
+          tags: { caller: "fastlane", caller_version: Fastlane::Testappio::VERSION, stage: stage, exit_class: exit_class },
+          fingerprint: ["ta-cli", "caller", "fastlane", stage, exit_class]
+        }
+        http = Net::HTTP.new(REPORT_ENDPOINT.host, REPORT_ENDPOINT.port, nil)
+        http.use_ssl = true
+        http.open_timeout = http.read_timeout = http.write_timeout = 1
+        request = Net::HTTP::Post.new(REPORT_ENDPOINT.request_uri, "Content-Type" => "application/json",
+                                      "X-Sentry-Auth" => "Sentry sentry_version=7, sentry_key=#{REPORT_KEY}")
+        request.body = JSON.generate(payload)
+        http.request(request) { |_| } # Ignore the response body and preserve the original lane failure.
+      rescue StandardError
+        nil
+      end
+
       def self.redact_token(text, api_token)
         return text if api_token.to_s.empty?
 
         text.gsub(api_token, "********")
       end
-      private_class_method :capture_cli, :fail_command, :redact_token
+      private_class_method :capture_cli, :fail_command, :redact_token, :report_failure
     end
   end
 end
