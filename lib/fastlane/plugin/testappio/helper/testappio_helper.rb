@@ -139,7 +139,10 @@ module Fastlane
         UI.user_error!(message)
       end
 
+      # ta-cli prints UTF-8. A CI shell without a UTF-8 locale tags its output
+      # US-ASCII, so read it as UTF-8 and replace bytes that are not valid.
       def self.redact_token(text, api_token)
+        text = text.dup.force_encoding(Encoding::UTF_8).scrub
         return text if api_token.to_s.empty?
 
         text.gsub(api_token, "********")

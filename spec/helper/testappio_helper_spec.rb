@@ -239,6 +239,14 @@ describe Fastlane::Helper::TestappioHelper do
     end
   end
 
+  def with_warnings_off
+    verbose = $VERBOSE
+    $VERBOSE = nil
+    yield
+  ensure
+    $VERBOSE = verbose
+  end
+
   describe ".call_ta_cli execution" do
     let(:base_command) { ["ta-cli", "publish", "--app_id=a", "--release=ios"] }
 
@@ -253,6 +261,21 @@ describe Fastlane::Helper::TestappioHelper do
       expect(messages).not_to include("")
       # Original raw stdout is preserved (lines include their newlines).
       expect(result).to eq("line one\n\nline two\n")
+    end
+
+    it "streams UTF-8 progress output when the CI locale is not UTF-8" do
+      previous = Encoding.default_external
+      with_warnings_off { Encoding.default_external = Encoding::US_ASCII }
+      messages = []
+      allow(FastlaneCore::UI).to receive(:message) { |m| messages << m }
+      command = [RbConfig.ruby, "-e", '$stdout.binmode; $stdout.write("Uploading\xE2\x80\xA6 50%\n\xFF done\n".b)']
+
+      result = described_class.call_ta_cli(command, "secret-token")
+
+      expect(messages).to include("Uploading\u2026 50%", "\uFFFD done")
+      expect(result).to eq("Uploading\u2026 50%\n\uFFFD done\n")
+    ensure
+      with_warnings_off { Encoding.default_external = previous }
     end
 
     it "includes each nonempty stderr line in a failure" do
