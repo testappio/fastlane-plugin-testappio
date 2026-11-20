@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-11-21
+
 ### Fixed
+- The lane no longer crashes after a successful upload when the CI shell has no UTF-8 locale; ta-cli output is read as UTF-8.
+- The ta-cli installer download is bounded (connect and total timeouts), so a stalled download cannot hang the lane.
+- The plugin no longer sends its own error reports from customer CI.
 - Fail the lane when ta-cli installation, version checking, updating, or upload fails, including signal termination and failures without stderr.
 - With `self_update: true`, a mandatory-update notice triggers installation and a second version check even when the first check exits nonzero.
 - Set both `TESTAPPIO_API_TOKEN` and `API_TOKEN` in the publish subprocess for compatibility with older CLIs and redact it from command logging and diagnostics.
