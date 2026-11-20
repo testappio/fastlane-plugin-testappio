@@ -18,17 +18,32 @@ describe Fastlane::Actions::UploadToTestappioAction do
   end
 
   describe ".run happy paths" do
+    it "passes uppercase APK and IPA paths unchanged" do
+      received = nil
+      allow(Fastlane::Helper::TestappioHelper).to receive(:call_ta_cli) { |command| received = command }
+
+      Tempfile.create(["build", ".APK"]) do |apk|
+        Tempfile.create(["build", ".IPA"]) do |ipa|
+          described_class.run(api_token: SecureRandom.hex(16), app_id: "a", release: "both", apk_file: apk.path, ipa_file: ipa.path)
+          expect(received).to include("--apk=#{apk.path}", "--ipa=#{ipa.path}")
+        end
+      end
+    end
+
     it "uploads for release=both with both apk and ipa" do
       received = nil
-      allow(Fastlane::Helper::TestappioHelper).to receive(:call_ta_cli) { |cmd|
+      token = SecureRandom.hex(16)
+      token_passed_separately = false
+      allow(Fastlane::Helper::TestappioHelper).to receive(:call_ta_cli) { |cmd, api_token|
         received = cmd
+        token_passed_separately = api_token == token && cmd.none? { |arg| arg.include?(token) }
         "ok"
       }
 
       Fastlane::FastFile.new.parse(<<~RUBY).runner.execute(:test)
         lane :test do
           upload_to_testappio(
-            api_token: "tok",
+            api_token: "#{token}",
             app_id: "app-1",
             release: "both",
             apk_file: "#{apk_path}",
@@ -37,7 +52,8 @@ describe Fastlane::Actions::UploadToTestappioAction do
         end
       RUBY
 
-      expect(received).to include("--api_token=tok", "--app_id=app-1", "--release=both")
+      expect(token_passed_separately).to be true
+      expect(received).to include("--app_id=app-1", "--release=both")
       expect(received).to include("--apk=#{apk_path}", "--ipa=#{ipa_path}")
       expect(received.find { |a| a.start_with?("--source=") }).to eq("--source=Fastlane")
       expect(received.find { |a| a.start_with?("--source_version=") })
@@ -79,27 +95,32 @@ describe Fastlane::Actions::UploadToTestappioAction do
     end
   end
 
-  describe ".run early returns" do
-    it "returns without calling ta-cli when check_ta_cli is false" do
-      allow(Fastlane::Helper::TestappioHelper).to receive(:check_ta_cli).and_return(false)
-      expect(Fastlane::Helper::TestappioHelper).not_to receive(:call_ta_cli)
+  describe ".run failures" do
+    it "fails the lane without publishing when CLI installation fails" do
+      helper = Fastlane::Helper::TestappioHelper
+      allow(helper).to receive(:check_ta_cli).and_call_original
+      allow(FastlaneCore::Helper).to receive(:which).and_call_original
+      allow(FastlaneCore::Helper).to receive(:which).with("ta-cli").and_return(nil)
+      allow(Open3).to receive(:capture3).and_return(["", "", command_status(22)])
+      expect(helper).not_to receive(:call_ta_cli)
 
-      Fastlane::FastFile.new.parse(<<~RUBY).runner.execute(:test)
-        lane :test do
-          upload_to_testappio(api_token: "tok", app_id: "a", release: "ios", ipa_file: "#{ipa_path}")
-        end
-      RUBY
+      expect do
+        Fastlane::FastFile.new.parse(<<~RUBY).runner.execute(:test)
+          lane :test do
+            upload_to_testappio(api_token: "tok", app_id: "a", release: "ios", ipa_file: "#{ipa_path}")
+          end
+        RUBY
+      end.to raise_error(FastlaneCore::Interface::FastlaneError, /Error installing ta-cli/)
     end
 
-    it "returns without calling ta-cli when check_update is false" do
-      allow(Fastlane::Helper::TestappioHelper).to receive(:check_update).and_return(false)
-      expect(Fastlane::Helper::TestappioHelper).not_to receive(:call_ta_cli)
+    it "fails the lane when publish exits unsuccessfully and does not announce success" do
+      allow(Fastlane::Helper::TestappioHelper).to receive(:call_ta_cli).and_call_original
+      stub_popen3(success: false, exitstatus: 23)
+      expect(FastlaneCore::UI).not_to receive(:success).with(/Successfully uploaded/)
 
-      Fastlane::FastFile.new.parse(<<~RUBY).runner.execute(:test)
-        lane :test do
-          upload_to_testappio(api_token: "tok", app_id: "a", release: "ios", ipa_file: "#{ipa_path}")
-        end
-      RUBY
+      expect do
+        described_class.run(api_token: SecureRandom.hex(16), app_id: "a", release: "ios", ipa_file: ipa_path)
+      end.to raise_error(FastlaneCore::Interface::FastlaneError, /exit status 23/)
     end
   end
 

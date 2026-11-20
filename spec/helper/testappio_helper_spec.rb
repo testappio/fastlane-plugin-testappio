@@ -1,42 +1,13 @@
 describe Fastlane::Helper::TestappioHelper do
-  describe ".handle_error" do
-    it "does nothing when errors array is empty" do
-      expect { described_class.handle_error([]) }.not_to raise_error
-    end
-
-    it "skips nil entries" do
-      expect { described_class.handle_error([nil, nil]) }.not_to raise_error
-    end
-
-    it "does not raise when stderr lines do not match /Error/" do
-      expect { described_class.handle_error(["Warning: deprecated flag", "info: starting"]) }
-        .not_to raise_error
-    end
-
-    it "raises user_error when any stderr line matches /Error/" do
-      expect { described_class.handle_error(["info: started", "Error: bad token"]) }
-        .to raise_error(FastlaneCore::Interface::FastlaneError, /Error while calling ta-cli/)
-    end
-
-    it "raises when stderr contains both Error and warning lines (mixed)" do
-      expect { described_class.handle_error(["warn: deprecated flag", "Error: auth failed", "info: cleanup"]) }
-        .to raise_error(FastlaneCore::Interface::FastlaneError, /Error while calling ta-cli/)
-    end
-
-    it "includes the actual Error-line content in the raised message" do
-      expect { described_class.handle_error(["Error: provisioning profile expired", "Error: deployment target invalid"]) }
-        .to raise_error(FastlaneCore::Interface::FastlaneError) do |e|
-          expect(e.message).to include("provisioning profile expired")
-          expect(e.message).to include("deployment target invalid")
-        end
-    end
-  end
+  let(:install_command) { ["bash", "-o", "pipefail", "-c", /curl -fLs.*install \| bash/] }
+  let(:credential_free_env) { { "TESTAPPIO_API_TOKEN" => nil, "API_TOKEN" => nil } }
 
   describe ".call_ta_cli verbose logging" do
+    let(:token) { SecureRandom.hex(16) }
     let(:command) do
       [
         "ta-cli", "publish",
-        "--api_token=SECRET_TOKEN_xyz123",
+        "--release_notes=notes mentioning #{token}",
         "--app_id=app-1",
         "--release=ios"
       ]
@@ -48,134 +19,251 @@ describe Fastlane::Helper::TestappioHelper do
       allow(Open3).to receive(:popen3).and_yield(StringIO.new, StringIO.new(""), StringIO.new(""), wait_thr)
     end
 
-    it "does not leak the api_token to UI.command" do
-      expect(FastlaneCore::UI).not_to receive(:command).with(/SECRET_TOKEN_xyz123/)
-      allow(FastlaneCore::UI).to receive(:command)
-      described_class.call_ta_cli(command)
-    end
-
-    it "displays a masked --api_token argument" do
+    it "redacts a token that appears inside another logged argument" do
       received = nil
       allow(FastlaneCore::UI).to receive(:command) { |arg| received = arg }
-      described_class.call_ta_cli(command)
-      expect(received.to_s).to match(/--api_token=\*+/)
+      described_class.call_ta_cli(command, token)
+      expect(received.include?(token)).to be false
+      expect(received).to include("--release_notes=notes mentioning ********")
     end
   end
 
   describe ".check_ta_cli" do
     it "returns true when ta-cli is already on PATH" do
-      allow(described_class).to receive(:system).with("which ta-cli > /dev/null 2>&1").and_return(true)
+      allow(FastlaneCore::Helper).to receive(:which).with("ta-cli").and_return("/usr/local/bin/ta-cli")
       expect(described_class.check_ta_cli).to be true
     end
 
     it "installs and returns true when ta-cli is missing and install succeeds" do
-      allow(described_class).to receive(:system).with("which ta-cli > /dev/null 2>&1").and_return(false)
-      allow(described_class).to receive(:system).with(/curl -Ls.*install \| bash/).and_return(true)
+      allow(FastlaneCore::Helper).to receive(:which).with("ta-cli").and_return(nil)
+      allow(Open3).to receive(:capture3).with(credential_free_env, *install_command)
+                                        .and_return(["ta-cli successfully installed", "", command_status(0)])
       expect(described_class.check_ta_cli).to be true
     end
 
-    it "returns false when ta-cli is missing and install fails" do
-      allow(described_class).to receive(:system).with("which ta-cli > /dev/null 2>&1").and_return(false)
-      allow(described_class).to receive(:system).with(/curl -Ls.*install \| bash/).and_return(false)
-      expect(described_class.check_ta_cli).to be false
+    it "raises when ta-cli is missing and install fails" do
+      allow(FastlaneCore::Helper).to receive(:which).with("ta-cli").and_return(nil)
+      allow(Open3).to receive(:capture3).with(credential_free_env, *install_command).and_return(["", "", command_status(22)])
+      expect { described_class.check_ta_cli }
+        .to raise_error(FastlaneCore::Interface::FastlaneError, /Error installing ta-cli/)
+    end
+
+    it "withholds child credentials and redacts diagnostics from a failed initial install" do
+      token = SecureRandom.hex(16)
+      credentials_removed = false
+      allow(FastlaneCore::Helper).to receive(:which).with("ta-cli").and_return(nil)
+      allow(Open3).to receive(:capture3) do |environment, *|
+        credentials_removed = %w[TESTAPPIO_API_TOKEN API_TOKEN].all? { |name| environment.key?(name) && environment[name].nil? }
+        ["setup #{token}", "download failed #{token}", command_status(19)]
+      end
+      messages = []
+      allow(FastlaneCore::UI).to receive(:verbose) { |message| messages << message }
+
+      expect { described_class.check_ta_cli(token) }.to raise_error(FastlaneCore::Interface::FastlaneError) do |error|
+        expect(error.message.include?(token)).to be false
+        expect(error.message).to include("exit status 19", "setup ********", "download failed ********")
+      end
+      expect(credentials_removed).to be true
+      expect(messages.any? { |message| message.include?(token) }).to be false
     end
   end
 
   describe ".check_update" do
-    def stub_ta_cli_version(output)
-      allow(described_class).to receive(:`).with("ta-cli version").and_return(output)
+    let(:required_update_notice) { "Update necessary due to breaking changes" }
+
+    def stub_ta_cli_version(*responses)
+      allow(Open3).to receive(:capture3).with(credential_free_env, "ta-cli", "version").and_return(*responses)
     end
 
     it "returns true when ta-cli is already up-to-date" do
-      stub_ta_cli_version("ta-cli is up-to-date")
+      stub_ta_cli_version(["ta-cli is up-to-date", "", command_status(0)])
       expect(described_class.check_update(false)).to be true
     end
 
     it "raises user_error on breaking changes when self_update is false" do
-      stub_ta_cli_version("breaking changes detected")
+      stub_ta_cli_version([required_update_notice, "", command_status(1)])
       expect { described_class.check_update(false) }
-        .to raise_error(FastlaneCore::Interface::FastlaneError, /breaking changes/)
+        .to raise_error(FastlaneCore::Interface::FastlaneError, /update ta-cli manually/)
     end
 
     it "updates ta-cli when breaking changes detected and self_update is true" do
-      # `ta-cli version` is called twice — once before the curl update (returns
-      # "breaking changes") and once after (returns clean).
-      call_count = 0
-      allow(described_class).to receive(:`) do
-        call_count += 1
-        call_count == 1 ? "breaking changes detected" : "ok"
-      end
-      allow(Open3).to receive(:capture3).with(/curl -Ls.*install \| bash/)
-                                        .and_return(["ta-cli successfully installed", "", instance_double(Process::Status, success?: true)])
+      stub_ta_cli_version([required_update_notice, "", command_status(0)], ["ok", "", command_status(0)])
+      expect(Open3).to receive(:capture3).with(credential_free_env, *install_command)
+                                         .and_return(["ta-cli successfully installed", "", command_status(0)])
       expect(described_class.check_update(true)).to be true
     end
 
     it "returns true with warning when new-version available and self_update is false" do
-      stub_ta_cli_version("New version available")
+      stub_ta_cli_version(["New version available", "", command_status(0)])
       expect(described_class.check_update(false)).to be true
     end
 
     it "updates and returns true when new-version available and self_update is true" do
-      call_count = 0
-      allow(described_class).to receive(:`) do
-        call_count += 1
-        call_count == 1 ? "New version available" : "ok"
-      end
-      allow(Open3).to receive(:capture3).with(/curl -Ls.*install \| bash/)
-                                        .and_return(["ta-cli has been updated", "", instance_double(Process::Status, success?: true)])
+      stub_ta_cli_version(["New version available", "", command_status(0)], ["ok", "", command_status(0)])
+      allow(Open3).to receive(:capture3).with(credential_free_env, *install_command)
+                                        .and_return(["ta-cli has been updated", "", command_status(0)])
       expect(described_class.check_update(true)).to be true
     end
 
     it "raises when post-update version is still outdated" do
-      call_count = 0
-      allow(described_class).to receive(:`) do
-        call_count += 1
-        call_count == 1 ? "New version available" : "Update necessary due to breaking changes"
-      end
-      allow(Open3).to receive(:capture3).with(/curl -Ls.*install \| bash/)
-                                        .and_return(["ta-cli has been updated", "", instance_double(Process::Status, success?: true)])
+      stub_ta_cli_version(["New version available", "", command_status(0)], [required_update_notice, "", command_status(0)])
+      allow(Open3).to receive(:capture3).with(credential_free_env, *install_command)
+                                        .and_return(["ta-cli has been updated", "", command_status(0)])
+      expect { described_class.check_update(true) }
+        .to raise_error(FastlaneCore::Interface::FastlaneError, /still outdated/)
+    end
+
+    it "reports still outdated when the post-update version exits nonzero with the forced notice" do
+      stub_ta_cli_version(["New version available", "", command_status(0)], [required_update_notice, "", command_status(1)])
+      allow(Open3).to receive(:capture3).with(credential_free_env, *install_command)
+                                        .and_return(["ta-cli has been updated", "", command_status(0)])
       expect { described_class.check_update(true) }
         .to raise_error(FastlaneCore::Interface::FastlaneError, /still outdated/)
     end
 
     it "raises when curl update output is unexpected" do
-      stub_ta_cli_version("New version available")
-      allow(Open3).to receive(:capture3).with(/curl -Ls.*install \| bash/)
-                                        .and_return(["curl: connection refused", "", instance_double(Process::Status, success?: false)])
+      stub_ta_cli_version(["New version available", "", command_status(0)])
+      allow(Open3).to receive(:capture3).with(credential_free_env, *install_command)
+                                        .and_return(["unexpected installer output", "", command_status(0)])
       expect { described_class.check_update(true) }
         .to raise_error(FastlaneCore::Interface::FastlaneError, /Error updating ta-cli/)
+    end
+
+    it "fails a non-zero update even when its output includes a success message" do
+      stub_ta_cli_version(["New version available", "", command_status(0)], ["ok", "", command_status(0)])
+      allow(Open3).to receive(:capture3).with(credential_free_env, *install_command)
+                                        .and_return(["ta-cli has been updated", "", command_status(22)])
+      expect { described_class.check_update(true) }
+        .to raise_error(FastlaneCore::Interface::FastlaneError, /Error updating ta-cli/)
+    end
+
+    it "fails an ordinary version check with non-zero status and empty output" do
+      stub_ta_cli_version(["", "", command_status(23)])
+      expect { described_class.check_update(false) }
+        .to raise_error(FastlaneCore::Interface::FastlaneError, /Error checking ta-cli version.*exit status 23/)
+    end
+
+    ["stdout", "stderr"].each do |stream|
+      it "updates and re-checks after a nonzero forced-update notice on #{stream}" do
+        notice = "Update necessary"
+        first = stream == "stdout" ? [notice, ""] : ["", notice]
+        expect(Open3).to receive(:capture3).with(credential_free_env, "ta-cli", "version")
+                                           .ordered.and_return([*first, command_status(1)])
+        expect(Open3).to receive(:capture3).with(credential_free_env, *install_command)
+                                           .ordered.and_return(["ta-cli has been updated", "", command_status(0)])
+        expect(Open3).to receive(:capture3).with(credential_free_env, "ta-cli", "version")
+                                           .ordered.and_return(["ok", "", command_status(0)])
+        expect(described_class.check_update(true)).to be true
+      end
+    end
+
+    it "fails a version check terminated by a signal even after printing a forced update notice" do
+      status = instance_double(Process::Status, success?: nil, signaled?: true, exitstatus: nil, termsig: 9)
+      stub_ta_cli_version([required_update_notice, "", status])
+      expect { described_class.check_update(true) }
+        .to raise_error(FastlaneCore::Interface::FastlaneError, /Error checking ta-cli version.*signal 9/)
+    end
+
+    it "withholds credentials and redacts version check and update diagnostics" do
+      token = SecureRandom.hex(16)
+      credential_status = []
+      allow(Open3).to receive(:capture3) do |environment, command, *|
+        credential_status << %w[TESTAPPIO_API_TOKEN API_TOKEN].all? { |name| environment.key?(name) && environment[name].nil? }
+        if command == "ta-cli"
+          ["New version available #{token}", "checking #{token}", command_status(0)]
+        else
+          ["starting #{token}", "update failed #{token}", command_status(17)]
+        end
+      end
+      messages = []
+      allow(FastlaneCore::UI).to receive(:verbose) { |message| messages << message }
+
+      expect { described_class.check_update(true, token) }.to raise_error(FastlaneCore::Interface::FastlaneError) do |error|
+        expect(error.message.include?(token)).to be false
+        expect(error.message).to include("exit status 17", "starting ********", "update failed ********")
+      end
+      expect(credential_status).to eq([true, true])
+      expect(messages.any? { |message| message.include?(token) }).to be false
+      expect(messages).to include("New version available ********", "checking ********")
+    end
+
+    it "fails when the version check after a successful update exits unsuccessfully" do
+      stub_ta_cli_version(["New version available", "", command_status(0)], ["", "version check failed", command_status(29)])
+      allow(Open3).to receive(:capture3).with(credential_free_env, *install_command)
+                                        .and_return(["ta-cli has been updated", "", command_status(0)])
+      expect { described_class.check_update(true) }
+        .to raise_error(FastlaneCore::Interface::FastlaneError, /Error checking ta-cli version.*exit status 29.*version check failed/)
     end
   end
 
   describe ".call_ta_cli execution" do
-    let(:base_command) { ["ta-cli", "publish", "--api_token=t", "--app_id=a", "--release=ios"] }
+    let(:base_command) { ["ta-cli", "publish", "--app_id=a", "--release=ios"] }
 
     it "streams stdout lines to UI.message (stripped) and returns the original raw stdout" do
-      stub_popen3(stdout: "line one\nline two\n", success: true)
+      stub_popen3(stdout: "line one\n\nline two\n", success: true)
       messages = []
       allow(FastlaneCore::UI).to receive(:message) { |m| messages << m }
 
       result = described_class.call_ta_cli(base_command)
 
       expect(messages).to include("line one", "line two")
+      expect(messages).not_to include("")
       # Original raw stdout is preserved (lines include their newlines).
-      expect(result).to eq("line one\nline two\n")
+      expect(result).to eq("line one\n\nline two\n")
     end
 
-    it "calls handle_error when ta-cli exits non-zero with /Error/ stderr" do
-      stub_popen3(stdout: "", stderr: "Error: bad token\n", success: false)
+    it "includes each nonempty stderr line in a failure" do
+      stub_popen3(stdout: "", stderr: "Error: bad token\n\nWarning: deprecated flag\n", success: false)
       expect { described_class.call_ta_cli(base_command) }
-        .to raise_error(FastlaneCore::Interface::FastlaneError, /Error while calling ta-cli/)
+        .to raise_error(FastlaneCore::Interface::FastlaneError, /Error while calling ta-cli.*Error: bad token \| Warning: deprecated flag/)
     end
 
-    it "does not call handle_error on successful exit even with non-Error stderr" do
-      stub_popen3(stdout: "ok\n", stderr: "warn: deprecated\n", success: true)
+    it "does not fail a successful exit when stderr contains a warning" do
+      stub_popen3(stdout: "ok\n", stderr: "Warning: deprecated flag\n", success: true)
       expect { described_class.call_ta_cli(base_command) }.not_to raise_error
     end
 
-    it "does NOT raise on non-zero exit when stderr contains only warnings (no /Error/)" do
-      stub_popen3(stdout: "", stderr: "warn: deprecated flag\n", success: false)
-      expect { described_class.call_ta_cli(base_command) }.not_to raise_error
+    it "raises on non-zero exit with a warning-only diagnostic" do
+      command = [RbConfig.ruby, "-e", 'warn "deprecated flag"; exit 7']
+      expect { described_class.call_ta_cli(command) }
+        .to raise_error(FastlaneCore::Interface::FastlaneError, /exit status 7.*deprecated flag/)
+    end
+
+    it "raises on non-zero exit with empty stderr" do
+      command = [RbConfig.ruby, "-e", "exit 23"]
+      expect { described_class.call_ta_cli(command) }
+        .to raise_error(FastlaneCore::Interface::FastlaneError, /exit status 23/)
+    end
+
+    it "raises when the child is terminated by a signal" do
+      command = [RbConfig.ruby, "-e", 'Process.kill("KILL", Process.pid)']
+      expect { described_class.call_ta_cli(command) }
+        .to raise_error(FastlaneCore::Interface::FastlaneError, /signal #{Signal.list.fetch('KILL')}/)
+    end
+
+    it "sets both credential names only in the publish child and keeps the token out of argv" do
+      names = %w[API_TOKEN TESTAPPIO_API_TOKEN]
+      parent = ENV.values_at(*names)
+      token = SecureRandom.hex(16)
+      child = 'a, b = ENV.values_at("API_TOKEN", "TESTAPPIO_API_TOKEN"); abort "missing credentials" unless a && a == b && !ARGV.include?(a)'
+      described_class.call_ta_cli([RbConfig.ruby, "-e", child], token)
+      expect(ENV.values_at(*names) == parent).to be true
+    end
+
+    it "redacts the child token from stdout and failure diagnostics" do
+      token = SecureRandom.hex(16)
+      child_code = 'token = ENV.fetch("TESTAPPIO_API_TOKEN"); puts "received " + token; warn "stderr " + token; exit 7'
+      messages = []
+      allow(FastlaneCore::UI).to receive(:message) { |message| messages << message }
+
+      expect do
+        described_class.call_ta_cli([RbConfig.ruby, "-e", child_code], token)
+      end.to raise_error(FastlaneCore::Interface::FastlaneError) do |error|
+        expect(error.message.include?(token)).to be false
+        expect(error.message).to include("stderr ********")
+      end
+      expect(messages.any? { |message| message.include?(token) }).to be false
+      expect(messages).to include("received ********")
     end
 
     it "passes the command array to Open3.popen3 without shell interpretation" do
@@ -191,7 +279,7 @@ describe Fastlane::Helper::TestappioHelper do
 
       # Array form: each element passed as a separate positional arg to popen3.
       # No shell, no escaping needed — special chars survive as literal bytes.
-      expect(received_args).to eq(command)
+      expect(received_args.drop(1)).to eq(command)
     end
   end
 end

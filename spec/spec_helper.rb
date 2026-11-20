@@ -49,12 +49,17 @@ RSpec.configure do |config|
 end
 
 # Helper: build a stubbed Open3.popen3 yielding the given stdout/stderr/exit status
-def stub_popen3(stdout: "", stderr: "", success: true)
-  wait_thr = instance_double(Process::Waiter, value: instance_double(Process::Status, success?: success))
+def stub_popen3(stdout: "", stderr: "", success: true, exitstatus: 1)
+  status = instance_double(Process::Status, success?: success, signaled?: false, exitstatus: exitstatus)
+  wait_thr = instance_double(Process::Waiter, value: status)
   allow(Open3).to receive(:popen3).and_yield(
     StringIO.new,
     StringIO.new(stdout),
     StringIO.new(stderr),
     wait_thr
   )
+end
+
+def command_status(code)
+  instance_double(Process::Status, success?: code == 0, signaled?: false, exitstatus: code)
 end

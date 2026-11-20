@@ -4,13 +4,9 @@ module Fastlane
       SUPPORTED_FILE_EXTENSIONS = ["apk", "ipa"]
 
       def self.run(params)
-        # Check if `ta_cli` exists, install it if not
-        unless Helper::TestappioHelper.check_ta_cli
-          UI.error("Error detecting ta-cli")
-          return
-        end
-
         api_token = params[:api_token]
+        Helper::TestappioHelper.check_ta_cli(api_token)
+
         app_id = params[:app_id]
         apk_file = params[:apk_file]
         ipa_file = params[:ipa_file]
@@ -21,17 +17,12 @@ module Fastlane
         notify = params[:notify]
         self_update = params[:self_update]
 
-        # Check if ta-cli needs to be updated
-        unless Helper::TestappioHelper.check_update(self_update)
-          UI.error("Error updating ta-cli")
-          return
-        end
+        Helper::TestappioHelper.check_update(self_update, api_token)
 
         validate_file_path(apk_file) unless release == "ios"
         validate_file_path(ipa_file) unless release == "android"
 
         command = ["ta-cli", "publish",
-                   "--api_token=#{api_token}",
                    "--app_id=#{app_id}",
                    "--release=#{release}"]
 
@@ -47,7 +38,7 @@ module Fastlane
                     "--source_version=#{Fastlane::Testappio::VERSION}"]
 
         UI.message("Uploading to TestApp.io")
-        Helper::TestappioHelper.call_ta_cli(command)
+        Helper::TestappioHelper.call_ta_cli(command, api_token)
         UI.success("Successfully uploaded to TestApp.io!")
       end
 
@@ -56,7 +47,7 @@ module Fastlane
 
         UI.user_error!("No file found at '#{file_path}'.") unless File.exist?(file_path)
 
-        file_ext = File.extname(file_path).delete('.')
+        file_ext = File.extname(file_path).delete_prefix('.').downcase
         unless SUPPORTED_FILE_EXTENSIONS.include?(file_ext)
           UI.user_error!("file_path is invalid, only files with extensions #{SUPPORTED_FILE_EXTENSIONS} are allowed to be uploaded.")
         end
@@ -89,6 +80,7 @@ module Fastlane
           FastlaneCore::ConfigItem.new(key: :api_token,
                                        env_name: "TESTAPPIO_API_TOKEN",
                                        description: "You can get it from https://portal.testapp.io/profile/tokens",
+                                       sensitive: true,
                                        verify_block: proc do |value|
                                          UI.user_error!("No API token provided. You can get it from https://portal.testapp.io/profile/tokens") unless value && !value.empty?
                                        end),
