@@ -2,54 +2,12 @@ describe Fastlane::Helper::TestappioHelper do
   let(:install_command) { ["bash", "-o", "pipefail", "-c", /curl -fLs.*install \| bash/] }
   let(:credential_free_env) { { "TESTAPPIO_API_TOKEN" => nil, "API_TOKEN" => nil } }
 
-  # All caller reports go to this offline transport, including failure specs.
-  let(:sent_reports) { [] }
-  before do
-    transport = instance_double(Net::HTTP)
-    allow(Net::HTTP).to receive(:new).and_return(transport)
-    allow(transport).to receive(:use_ssl=)
-    allow(transport).to receive(:open_timeout=)
-    allow(transport).to receive(:write_timeout=)
-    allow(transport).to receive(:read_timeout=)
-    allow(transport).to receive(:request) { |req| sent_reports << JSON.parse(req.body) }
-  end
-
-  describe "terminal caller reporting" do
-    def expect_caller_report(stage, exit_class)
-      expect(sent_reports.size).to eq(1)
-      report = sent_reports.first
-      expect(report["message"]).to eq("Uploader process failed")
-      expect(report["level"]).to eq("error")
-      expect(report["tags"]).to include("caller" => "fastlane", "stage" => stage, "exit_class" => exit_class)
-      expect(report["fingerprint"]).to eq(["ta-cli", "caller", "fastlane", stage, exit_class])
-      expect(report.to_s).not_to include("private-marker")
-    end
-
-    it "reports a missing publish executable once" do
-      allow(Open3).to receive(:popen3).and_raise(Errno::ENOENT, "private-marker")
-      expect { described_class.call_ta_cli(["ta-cli"]) }.to raise_error(StandardError)
-      expect_caller_report("publish", "spawn")
-    end
-
-    it "reports an unexpected signal but omits ordinary CLI failures and cancellation" do
-      ["exit 1", 'Process.kill("TERM",Process.pid)', 'warn "private-marker"; Process.kill("KILL",Process.pid)'].each do |code|
-        expect { described_class.call_ta_cli([RbConfig.ruby, "-e", code]) }.to raise_error(FastlaneCore::Interface::FastlaneError)
-      end
-      expect_caller_report("publish", "signal")
-    end
-
-    it "preserves an installer spawn error even when reporting cannot connect" do
-      allow(FastlaneCore::Helper).to receive(:which).and_return(nil)
-      allow(Open3).to receive(:capture3).and_raise(Errno::ENOENT)
-      expect(Net::HTTP).to receive(:new).and_raise(SocketError)
-      expect { described_class.check_ta_cli }.to raise_error(Errno::ENOENT)
-    end
-
-    it "reports an unsuccessful bootstrap without child output" do
-      allow(FastlaneCore::Helper).to receive(:which).and_return(nil)
-      allow(Open3).to receive(:capture3).and_return(["private-marker", "", command_status(22)])
-      expect { described_class.check_ta_cli }.to raise_error(FastlaneCore::Interface::FastlaneError)
-      expect_caller_report("install", "bootstrap")
+  it "contains no direct telemetry reporting implementation in library files" do
+    files = Dir[File.expand_path("../../lib/**/*.rb", __dir__)]
+    expect(files).not_to be_empty
+    files.each do |file|
+      expect(File.read(file).match?(/net\/http|ingest|sentry|REPORT_ENDPOINT|REPORT_KEY|report_failure|Net::HTTP/i))
+        .to be(false), "unexpected telemetry reporting reference in #{file}"
     end
   end
 
@@ -235,12 +193,11 @@ describe Fastlane::Helper::TestappioHelper do
       end
     end
 
-    it "reports a signaled post-update check even if it printed an update notice" do
+    it "fails a signaled post-update check even if it printed an update notice" do
       status = instance_double(Process::Status, success?: nil, signaled?: true, exitstatus: nil, termsig: 9)
       stub_ta_cli_version(["New version available", "", command_status(0)], [required_update_notice, "", status])
       allow(Open3).to receive(:capture3).with(credential_free_env, *install_command).and_return(["", "", command_status(0)])
       expect { described_class.check_update(true) }.to raise_error(FastlaneCore::Interface::FastlaneError, /signal 9/)
-      expect(sent_reports.map { |event| event["fingerprint"] }).to eq([%w[ta-cli caller fastlane version signal]])
     end
 
     it "fails a version check terminated by a signal even after printing a forced update notice" do
