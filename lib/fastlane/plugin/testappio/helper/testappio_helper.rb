@@ -1,3 +1,4 @@
+require 'fastlane_core/helper'
 require 'fastlane_core/ui/ui'
 require 'open3'
 
@@ -6,26 +7,34 @@ module Fastlane
 
   module Helper
     class TestappioHelper
+      INSTALL_COMMAND = ["bash", "-o", "pipefail", "-c", "curl -fLs --connect-timeout 10 --max-time 60 https://github.com/testappio/cli/releases/latest/download/install | bash"].freeze
+      VERSION_COMMAND = ["ta-cli", "version"].freeze
+      ENV_WITHOUT_TOKEN = { "TESTAPPIO_API_TOKEN" => nil, "API_TOKEN" => nil }.freeze
+      CURRENT_VERSION_NOTICE = /You are using the latest version|ta-cli is (?:already )?up-to-date/i
+      REQUIRED_UPDATE_NOTICE = "Update necessary".freeze
+
       # Check if `ta_cli` exists, install it if not
-      def self.check_ta_cli
-        unless system('which ta-cli > /dev/null 2>&1')
+      def self.check_ta_cli(api_token = nil)
+        unless FastlaneCore::Helper.which("ta-cli")
           UI.error("ta-cli not found, installing")
 
-          unless system('curl -Ls https://github.com/testappio/cli/releases/latest/download/install | bash')
-            UI.error("Error installing ta-cli")
-            return false
-          end
+          output, stderr, status = capture_cli(INSTALL_COMMAND, api_token)
+          fail_command("Error installing ta-cli", status, output, stderr) unless status.success?
+          UI.success("ta-cli installed")
         end
 
         return true
       end
 
       # Check if there is an update available for `ta_cli`, and install it if necessary
-      def self.check_update(self_update)
-        version_output = `ta-cli version`
-        UI.verbose(version_output)
+      def self.check_update(self_update, api_token = nil)
+        version_output, version_error, version_status = capture_cli(VERSION_COMMAND, api_token)
+        forced = [version_output, version_error].any? { |text| text.include?(REQUIRED_UPDATE_NOTICE) }
+        unless version_status.success? || (forced && !version_status.signaled?)
+          fail_command("Error checking ta-cli version", version_status, version_output, version_error)
+        end
 
-        if version_output.include?("breaking changes")
+        if forced
           if self_update
             UI.message("Updating ta-cli due to breaking changes...")
           else
@@ -40,75 +49,54 @@ module Fastlane
             return true
           end
         else
-          UI.success("ta-cli is already up-to-date")
+          if version_output.match?(CURRENT_VERSION_NOTICE)
+            UI.success("ta-cli is already up-to-date")
+          else
+            UI.important("Version check unavailable. Continuing with the installed ta-cli.")
+          end
           return true
         end
 
-        update_command = "curl -Ls https://github.com/testappio/cli/releases/latest/download/install | bash"
-        update_output, = Open3.capture3(update_command)
-        UI.verbose(update_output)
+        update_output, update_error, update_status = capture_cli(INSTALL_COMMAND, api_token)
+        fail_command("Error updating ta-cli", update_status, update_output, update_error) unless update_status.success?
+        version_output, version_error, version_status = capture_cli(VERSION_COMMAND, api_token)
+        fail_command("Error checking ta-cli version", version_status, version_output, version_error) if version_status.signaled?
+        # A still-forced update exits nonzero, so check the notice before the exit code.
+        if [version_output, version_error].any? { |text| text.include?(REQUIRED_UPDATE_NOTICE) } || version_output.include?("New version available")
+          UI.user_error!("Error updating ta-cli: the version is still outdated")
+        end
+        fail_command("Error checking ta-cli version", version_status, version_output, version_error) unless version_status.success?
 
-        if update_output.include?("ta-cli successfully installed") || update_output.include?("ta-cli has been updated")
-          version_output = `ta-cli version`
-          UI.verbose(version_output)
-
-          if version_output.include?("Update necessary due to breaking changes") || version_output.include?("New version available")
-            UI.user_error!("Error updating ta-cli: the version is still outdated")
-          else
-            UI.success("ta-cli has been updated successfully")
-            return true
-          end
+        if version_output.match?(CURRENT_VERSION_NOTICE)
+          UI.success("ta-cli has been updated successfully")
         else
-          UI.user_error!("Error updating ta-cli: #{update_output}")
+          UI.important("Update installed. Version check unavailable.")
         end
+        true
       end
 
-      # Handle errors from ta-cli. Raises user_error only when stderr contains an
-      # /Error/-matching line. Non-error stderr (warnings, info) is logged via UI.verbose.
-      # The raised message includes the actual error lines so the user has context
-      # (auth failure, provisioning issue, network error, etc.) without re-running verbose.
-      def self.handle_error(errors)
-        errors.each do |error|
-          next unless error
-
-          if error.include?('Error')
-            UI.error(error.to_s)
-          else
-            UI.verbose(error.to_s)
-          end
-        end
-
-        error_lines = errors.compact.select { |e| e.include?('Error') }
-        return if error_lines.empty?
-
-        UI.user_error!("Error while calling ta-cli: #{error_lines.join(' | ')}")
-      end
-
-      # Run the given command. Streams stdout to UI.message; routes stderr through
-      # handle_error on non-zero exit. Masks --api_token in verbose command echo.
-      #
-      # Uses Open3.popen3 with the command array form (no shell interpretation), so
-      # shell metacharacters in api_token / release_notes / file paths are passed
-      # literally to ta-cli without need for manual escaping.
-      def self.call_ta_cli(command)
+      # Stream stdout, keep the token in the child environment, and preserve
+      # release notes and file paths as literal arguments.
+      def self.call_ta_cli(command, api_token = nil)
         UI.message("Starting ta-cli...")
         if FastlaneCore::Globals.verbose?
           UI.verbose("ta-cli command:\n\n")
-          UI.command(redact_command(command).to_s)
+          UI.command(command.map { |argument| redact_token(argument, api_token) }.to_s)
           UI.verbose("\n\n")
         end
 
         out = []
-        error = []
+        stderr_lines = []
         out_thread = nil
         err_thread = nil
-        Open3.popen3(*command) do |stdin, stdout, stderr, wait_thr|
+        Open3.popen3({ "TESTAPPIO_API_TOKEN" => api_token, "API_TOKEN" => api_token }, *command) do |stdin, stdout, stderr, wait_thr|
           stdin.close
 
           # Read stdout and stderr concurrently to avoid deadlock when ta-cli
           # fills one buffer before we finish draining the other.
           out_thread = Thread.new do
             while (line = stdout.gets)
+              line = redact_token(line, api_token)
               out << line
               UI.message(line.strip) unless line.strip.empty?
             end
@@ -116,7 +104,7 @@ module Fastlane
 
           err_thread = Thread.new do
             while (line = stderr.gets)
-              error << line.strip
+              stderr_lines << redact_token(line, api_token)
             end
           end
 
@@ -124,23 +112,42 @@ module Fastlane
           err_thread.join
 
           exit_status = wait_thr.value
-          handle_error(error) unless exit_status.success?
+          fail_command("Error while calling ta-cli", exit_status, stderr_lines.join) unless exit_status.success?
         end
         out.join
       ensure
         # If popen3's block raised before threads joined, make sure no readers
         # are left holding pipe FDs.
-        out_thread&.kill if out_thread&.alive?
-        err_thread&.kill if err_thread&.alive?
+        out_thread.kill if out_thread&.alive?
+        err_thread.kill if err_thread&.alive?
       end
 
-      # Return a copy of the command array with --api_token=... masked.
-      def self.redact_command(command)
-        command.map do |arg|
-          arg.kind_of?(String) && arg.start_with?("--api_token=") ? "--api_token=********" : arg
-        end
+      def self.capture_cli(command, api_token)
+        output, stderr, status = Open3.capture3(ENV_WITHOUT_TOKEN, *command)
+        output = redact_token(output, api_token)
+        stderr = redact_token(stderr, api_token)
+        UI.verbose(output) unless output.empty?
+        UI.verbose(stderr) unless stderr.empty?
+        [output, stderr, status]
       end
-      private_class_method :redact_command
+
+      def self.fail_command(message, status, *diagnostics)
+        reason = status.signaled? ? "signal #{status.termsig}" : "exit status #{status.exitstatus}"
+        message = "#{message} (#{reason})"
+        diagnostic = diagnostics.flat_map(&:lines).map(&:strip).reject(&:empty?).join(" | ")
+        message = "#{message}: #{diagnostic}" unless diagnostic.empty?
+        UI.user_error!(message)
+      end
+
+      # ta-cli prints UTF-8. A CI shell without a UTF-8 locale tags its output
+      # US-ASCII, so read it as UTF-8 and replace bytes that are not valid.
+      def self.redact_token(text, api_token)
+        text = text.dup.force_encoding(Encoding::UTF_8).scrub
+        return text if api_token.to_s.empty?
+
+        text.gsub(api_token, "********")
+      end
+      private_class_method :capture_cli, :fail_command, :redact_token
     end
   end
 end

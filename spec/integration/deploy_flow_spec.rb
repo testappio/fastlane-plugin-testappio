@@ -7,7 +7,7 @@
 #   - check_update returns without re-installing (self_update: false)
 #   - The command is built with all expected flags
 #   - ta-cli is actually invoked via Open3.popen3
-#   - handle_error parses /Error/ stderr from real ta-cli and raises FastlaneError
+#   - an unsuccessful ta-cli process raises FastlaneError
 #
 # Requires ta-cli installed on PATH. Will skip cleanly otherwise.
 
