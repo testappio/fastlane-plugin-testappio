@@ -6,7 +6,7 @@ describe Fastlane::Helper::TestappioHelper do
     files = Dir[File.expand_path("../../lib/**/*.rb", __dir__)]
     expect(files).not_to be_empty
     files.each do |file|
-      expect(File.read(file).match?(/net\/http|ingest|sentry|REPORT_ENDPOINT|REPORT_KEY|report_failure|Net::HTTP/i))
+      expect(File.read(file).match?(%r{net/http|ingest|sentry|REPORT_ENDPOINT|REPORT_KEY|report_failure|Net::HTTP}i))
         .to be(false), "unexpected telemetry reporting reference in #{file}"
     end
   end

@@ -10,7 +10,7 @@ module Fastlane
       INSTALL_COMMAND = ["bash", "-o", "pipefail", "-c", "curl -fLs --connect-timeout 10 --max-time 60 https://github.com/testappio/cli/releases/latest/download/install | bash"].freeze
       VERSION_COMMAND = ["ta-cli", "version"].freeze
       ENV_WITHOUT_TOKEN = { "TESTAPPIO_API_TOKEN" => nil, "API_TOKEN" => nil }.freeze
-      CURRENT_VERSION_NOTICE = /You are using the latest version|ta-cli is (?:already )?up-to-date/i.freeze
+      CURRENT_VERSION_NOTICE = /You are using the latest version|ta-cli is (?:already )?up-to-date/i
       REQUIRED_UPDATE_NOTICE = "Update necessary".freeze
 
       # Check if `ta_cli` exists, install it if not
